@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Musculoskeletal Model MS3 with Animations</title>
+    <style>body { margin: 0; }</style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/exporters/GLTFExporter.js"></script>
+    <script type="module">
+        import { fullSkeletonNodes } from './bones.js';
+        import { muscles } from './muscles.js';
+        import { createAnimations } from './anims.js';
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+
+        const lightTarget = new THREE.Object3D();
+        lightTarget.position.set(0, 0, -1);
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(0, 10, 10);
+        light.add(lightTarget);
+        light.target = lightTarget;
+        scene.add(light);
+
+        const fillLight1 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight1.position.set(-10, 5, -10);
+        const fillTarget1 = new THREE.Object3D();
+        fillTarget1.position.set(0, 0, -1);
+        fillLight1.add(fillTarget1);
+        fillLight1.target = fillTarget1;
+        scene.add(fillLight1);
+
+        const fillLight2 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight2.position.set(10, -5, -10);
+        const fillTarget2 = new THREE.Object3D();
+        fillTarget2.position.set(0, 0, -1);
+        fillLight2.add(fillTarget2);
+        fillLight2.target = fillTarget2;
+        scene.add(fillLight2);
+
+        const exporter = new THREE.GLTFExporter();
+
+        // Create skeleton
+        const bones = [];
+        const boneMap = {};
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const bone = new THREE.Bone();
+            bone.position.set(...fullSkeletonNodes[nodeName].pos);
+            bone.name = nodeName;
+            boneMap[nodeName] = bone;
+            bones.push(bone);
+        });
+
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const parentName = fullSkeletonNodes[nodeName].parent;
+            if (parentName && boneMap[parentName]) {
+                boneMap[parentName].add(boneMap[nodeName]);
+            }
+        });
+
+        const skeletonRoot = new THREE.Object3D();
+        skeletonRoot.name = "SkeletonRoot";
+        skeletonRoot.add(boneMap["root"]);
+        scene.add(skeletonRoot);
+
+        const skeleton = new THREE.Skeleton(bones);
+
+        // Skinned mesh
+        const bodyGeometry = new THREE.BoxGeometry(6, 20, 2);
+        const skinIndices = [];
+        const skinWeights = [];
+        const position = bodyGeometry.attributes.position;
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < position.count; i++) {
+            vertex.fromBufferAttribute(position, i);
+            const y = vertex.y + 10;
+            if (y > 15) {
+                skinIndices.push(bones.indexOf(boneMap["spine_top"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else if (y < 5) {
+                skinIndices.push(bones.indexOf(boneMap["spine_base"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else {
+                skinIndices.push(bones.indexOf(boneMap["spine_t6"]), 0, 0, 0); // Use spine_t6 as mid-spine
+                skinWeights.push(1, 0, 0, 0);
+            }
+        }
+
+        bodyGeometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        bodyGeometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.1, roughness: 0.8 });
+        const bodyMesh = new THREE.SkinnedMesh(bodyGeometry, bodyMaterial);
+        bodyMesh.name = "Body";
+        bodyMesh.position.set(0, 10, 0);
+        bodyMesh.bind(skeleton);
+        bodyMesh.add(bones[0]);
+        scene.add(bodyMesh);
+
+        // Visible bone connections
+        function createCylinder(startPoint, endPoint, radius, material) {
+            const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+            const height = direction.length();
+            const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
+            geometry.translate(0, height / 2, 0);
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(startPoint);
+            mesh.lookAt(endPoint);
+            mesh.rotateX(Math.PI / 2);
+            return mesh;
+        }
+
+        const boneMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.6, transparent: true, opacity: 0.6 });
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const parentName = fullSkeletonNodes[nodeName].parent;
+            if (parentName) {
+                const startPos = new THREE.Vector3(...fullSkeletonNodes[parentName].pos);
+                const endPos = new THREE.Vector3(...fullSkeletonNodes[nodeName].pos);
+                const boneCylinder = createCylinder(startPos, endPos, 0.3, boneMaterial);
+                boneCylinder.name = `${parentName}_to_${nodeName}`;
+                scene.add(boneCylinder);
+            }
+        });
+
+        // Muscles with morph targets
+        const muscleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, metalness: 0.1, roughness: 0.8 });
+        const validBones = new Set(Object.keys(fullSkeletonNodes));
+        const validMuscles = muscles.filter(muscle => 
+            validBones.has(muscle.origin) && validBones.has(muscle.insertion)
+        );
+
+        validMuscles.forEach(muscle => {
+            const startPos = new THREE.Vector3(...fullSkeletonNodes[muscle.origin].pos);
+            const endPos = new THREE.Vector3(...fullSkeletonNodes[muscle.insertion].pos);
+            const direction = new THREE.Vector3().subVectors(endPos, startPos);
+            const height = Math.max(direction.length(), 0.1);
+
+            const relaxedGeom = new THREE.CylinderGeometry(muscle.radius, muscle.radius, height, 8);
+            relaxedGeom.translate(0, height / 2, 0);
+
+            const contractedGeom = new THREE.CylinderGeometry(muscle.radius * 1.3, muscle.radius * 1.3, height * 0.8, 8);
+            contractedGeom.translate(0, height * 0.4, 0);
+
+            const geometry = relaxedGeom.clone();
+            geometry.morphAttributes.position = [];
+            geometry.morphAttributes.position[0] = new THREE.Float32BufferAttribute(
+                contractedGeom.attributes.position.array,
+                3
+            );
+
+            const mesh = new THREE.Mesh(geometry, muscleMaterial.clone());
+            mesh.name = muscle.name;
+            mesh.position.copy(startPos);
+            mesh.lookAt(endPos);
+            mesh.rotateX(Math.PI / 2);
+            mesh.morphTargetInfluences = [0];
+            scene.add(mesh);
+        });
+
+        // Animation setup
+        const mixer = new THREE.AnimationMixer(scene);
+        const clock = new THREE.Clock();
+        console.log("boneMap keys before animation:", Object.keys(boneMap));
+        const animations = createAnimations(boneMap, validMuscles);
+        scene.animations = animations;
+
+        const idleAction = mixer.clipAction(animations[0]);
+        idleAction.play();
+
+        // Animate
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            mixer.update(delta);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Export function
+        function exportGLB() {
+            scene.traverse(object => {
+                if (object.isMesh) {
+                    const geometry = object.geometry;
+                    for (const key in geometry.attributes) {
+                        if (geometry.attributes[key].normalized === undefined) {
+                            geometry.attributes[key].normalized = false;
+                        }
+                    }
+                    if (geometry.morphAttributes) {
+                        for (const key in geometry.morphAttributes) {
+                            geometry.morphAttributes[key].forEach(attr => {
+                                if (attr.normalized === undefined) attr.normalized = false;
+                            });
+                        }
+                    }
+                }
+            });
+
+            const options = { binary: true, animations: scene.animations, trs: true, onlyVisible: false, truncateDrawRange: false, embedImages: true, forceIndices: true };
+            exporter.parse(scene, gltf => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'MS3.glb';
+                link.click();
+                console.log("Export complete!");
+            }, options);
+        }
+
+        // UI Controls
+        const controlsDiv = document.createElement('div');
+        controlsDiv.style.position = 'absolute';
+        controlsDiv.style.top = '10px';
+        controlsDiv.style.left = '10px';
+        controlsDiv.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        controlsDiv.style.padding = '10px';
+        controlsDiv.style.borderRadius = '5px';
+        document.body.appendChild(controlsDiv);
+
+        const exportButton = document.createElement('button');
+        exportButton.textContent = 'Export GLB';
+        exportButton.addEventListener('click', exportGLB);
+        controlsDiv.appendChild(exportButton);
+
+        const animSelect = document.createElement('select');
+        animSelect.style.marginLeft = '10px';
+        animations.forEach((clip, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = clip.name.charAt(0).toUpperCase() + clip.name.slice(1) + ' Animation';
+            animSelect.appendChild(option);
+        });
+        animSelect.addEventListener('change', (e) => {
+            mixer.stopAllAction();
+            mixer.clipAction(animations[e.target.value]).play();
+        });
+        controlsDiv.appendChild(animSelect);
+    </script>
+</body>
+</html>

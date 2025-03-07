@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MS2 Animation Test</title>
+    <style>body { margin: 0; }</style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(0, 10, 10);
+        scene.add(directionalLight);
+
+        const loader = new THREE.GLTFLoader();
+        let mixer;
+
+        loader.load("MS2.glb", (gltf) => {
+            console.log("GLTF Loaded:", gltf);
+            scene.add(gltf.scene);
+            mixer = new THREE.AnimationMixer(gltf.scene);
+
+            console.log("Animations:", gltf.animations);
+            const walkAction = mixer.clipAction(gltf.animations.find(anim => anim.name === "WALK"));
+            walkAction.play();
+
+            setTimeout(() => {
+                walkAction.stop();
+                const idleAction = mixer.clipAction(gltf.animations.find(anim => anim.name === "IDLE"));
+                idleAction.play();
+            }, 5000);
+        }, undefined, (error) => {
+            console.error("GLTF Load Error:", error);
+        });
+
+        camera.position.set(0, 10, 20);
+        camera.lookAt(0, 10, 0);
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
