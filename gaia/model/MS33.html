@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Musculoskeletal Model MS3 Dashboard</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; }
+        #dashboard { display: flex; height: 100vh; }
+        #viewer { flex: 2; position: relative; background: #333333; }
+        #controls { flex: 1; padding: 20px; background: #f0f0f0; overflow-y: auto; }
+        #renderer { width: 100%; height: 100%; }
+        .panel { margin-bottom: 20px; padding: 15px; background: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        button, select { padding: 8px; margin: 5px 0; width: 100%; }
+        #energyOutput { white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto; }
+        #zoomControls { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; }
+        #zoomControls button { width: 40px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <div id="dashboard">
+        <div id="viewer">
+            <canvas id="renderer"></canvas>
+            <div id="zoomControls">
+                <button id="zoomIn">+</button>
+                <button id="zoomOut">-</button>
+            </div>
+        </div>
+        <div id="controls">
+            <div class="panel">
+                <h2>Animation Controls</h2>
+                <select id="animSelect"></select>
+                <button id="exportButton">Export GLB</button>
+            </div>
+            <div class="panel">
+                <h2>Energy Computations</h2>
+                <div id="energyOutput"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/exporters/GLTFExporter.js"></script>
+    <script type="module">
+        import { fullSkeletonNodes } from './bones.js';
+        import { muscles } from './200muscles.js';
+        import { createAnimations } from './anims.js';
+
+        // Scene setup
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('renderer'), antialias: true });
+        renderer.setSize(window.innerWidth * 0.66, window.innerHeight);
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth * 0.66, window.innerHeight);
+            camera.aspect = (window.innerWidth * 0.66) / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+
+        const camera = new THREE.PerspectiveCamera(75, (window.innerWidth * 0.66) / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 30);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 10;
+        controls.maxDistance = 100;
+
+        // Lighting
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(0, 10, 10);
+        const lightTarget = new THREE.Object3D();
+        lightTarget.position.set(0, 0, -1);
+        light.add(lightTarget);
+        light.target = lightTarget;
+        scene.add(light);
+
+        const fillLight1 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight1.position.set(-10, 5, -10);
+        const fillTarget1 = new THREE.Object3D();
+        fillTarget1.position.set(0, 0, -1);
+        fillLight1.add(fillTarget1);
+        fillLight1.target = fillTarget1;
+        scene.add(fillLight1);
+
+        const fillLight2 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight2.position.set(10, -5, -10);
+        const fillTarget2 = new THREE.Object3D();
+        fillTarget2.position.set(0, 0, -1);
+        fillLight2.add(fillTarget2);
+        fillLight2.target = fillTarget2;
+        scene.add(fillLight2);
+
+        const exporter = new THREE.GLTFExporter();
+
+        // Skeleton
+        const bones = [];
+        const boneMap = {};
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const bone = new THREE.Bone();
+            bone.position.set(...fullSkeletonNodes[nodeName].pos);
+            bone.name = nodeName;
+            boneMap[nodeName] = bone;
+            bones.push(bone);
+        });
+
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const parentName = fullSkeletonNodes[nodeName].parent;
+            if (parentName && boneMap[parentName]) {
+                boneMap[parentName].add(boneMap[nodeName]);
+            }
+        });
+
+        const skeletonRoot = new THREE.Object3D();
+        skeletonRoot.name = "SkeletonRoot";
+        skeletonRoot.add(boneMap["root"]);
+        scene.add(skeletonRoot);
+
+        const skeleton = new THREE.Skeleton(bones);
+
+        // Body mesh
+        const bodyGeometry = new THREE.BoxGeometry(6, 20, 2);
+        const skinIndices = [];
+        const skinWeights = [];
+        const position = bodyGeometry.attributes.position;
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < position.count; i++) {
+            vertex.fromBufferAttribute(position, i);
+            const y = vertex.y + 10;
+            if (y > 15) {
+                skinIndices.push(bones.indexOf(boneMap["spine_top"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else if (y < 5) {
+                skinIndices.push(bones.indexOf(boneMap["spine_base"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else {
+                skinIndices.push(bones.indexOf(boneMap["spine_t6"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            }
+        }
+
+        bodyGeometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        bodyGeometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x888888, skinning: true });
+        const bodyMesh = new THREE.SkinnedMesh(bodyGeometry, bodyMaterial);
+        bodyMesh.name = "Body";
+        bodyMesh.position.set(0, 10, 0);
+        bodyMesh.bind(skeleton);
+        bodyMesh.add(bones[0]);
+        scene.add(bodyMesh);
+
+        // Bone connections
+        function createCylinder(startPoint, endPoint, radius, material) {
+            const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+            const height = direction.length();
+            const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
+            geometry.translate(0, height / 2, 0);
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(startPoint);
+            mesh.lookAt(endPoint);
+            mesh.rotateX(Math.PI / 2);
+            return mesh;
+        }
+
+        const boneMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        Object.keys(fullSkeletonNodes).forEach(nodeName => {
+            const parentName = fullSkeletonNodes[nodeName].parent;
+            if (parentName) {
+                const startPos = new THREE.Vector3(...fullSkeletonNodes[parentName].pos);
+                const endPos = new THREE.Vector3(...fullSkeletonNodes[nodeName].pos);
+                const boneCylinder = createCylinder(startPos, endPos, 0.3, boneMaterial);
+                boneCylinder.name = `${parentName}_to_${nodeName}`;
+                scene.add(boneCylinder);
+            }
+        });
+
+        // Muscles
+        const muscleMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+        const validBones = new Set(Object.keys(fullSkeletonNodes));
+        const validMuscles = muscles.filter(muscle => 
+            validBones.has(muscle.origin) && validBones.has(muscle.insertion)
+        );
+
+        validMuscles.forEach(muscle => {
+            const startPos = new THREE.Vector3(...fullSkeletonNodes[muscle.origin].pos);
+            const endPos = new THREE.Vector3(...fullSkeletonNodes[muscle.insertion].pos);
+            const direction = new THREE.Vector3().subVectors(endPos, startPos);
+            const height = Math.max(direction.length(), 0.1);
+
+            const relaxedGeom = new THREE.CylinderGeometry(muscle.radius, muscle.radius, height, 8);
+            relaxedGeom.translate(0, height / 2, 0);
+
+            const contractedGeom = new THREE.CylinderGeometry(muscle.radius * 1.3, muscle.radius * 1.3, height * 0.8, 8);
+            contractedGeom.translate(0, height * 0.4, 0);
+
+            const geometry = relaxedGeom.clone();
+            geometry.morphAttributes.position = [];
+            geometry.morphAttributes.position[0] = new THREE.Float32BufferAttribute(
+                contractedGeom.attributes.position.array,
+                3
+            );
+
+            const mesh = new THREE.Mesh(geometry, muscleMaterial.clone());
+            mesh.name = muscle.name;
+            mesh.position.copy(startPos);
+            mesh.lookAt(endPos);
+            mesh.rotateX(Math.PI / 2);
+            mesh.morphTargetInfluences = [0];
+            scene.add(mesh);
+        });
+
+        // Animation setup
+        const mixer = new THREE.AnimationMixer(scene);
+        const clock = new THREE.Clock();
+        const animations = createAnimations(boneMap, validMuscles);
+        scene.animations = animations;
+
+        // Populate animation selector
+        const animSelect = document.getElementById('animSelect');
+        animations.forEach((clip, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = clip.name.toUpperCase() + ' Animation';
+            animSelect.appendChild(option);
+        });
+
+        let currentAction = mixer.clipAction(animations[0]);
+        currentAction.play();
+
+        animSelect.addEventListener('change', (e) => {
+            mixer.stopAllAction();
+            currentAction = mixer.clipAction(animations[e.target.value]);
+            currentAction.play();
+            updateEnergyOutput(e.target.value);
+        });
+
+        // Energy output
+        function updateEnergyOutput(animIndex) {
+            const animName = animations[animIndex].name;
+            const energyData = window.actionPatternDB[animName];
+            if (energyData) {
+                const output = `Animation: ${animName.toUpperCase()}
+Total Energy: ${energyData.totalEnergy.toFixed(2)} J
+Frames: ${energyData.patterns.length}
+Average Energy/Frame: ${(energyData.totalEnergy / energyData.patterns.length).toFixed(2)} J
+Sample Pattern (Frame 0):
+${JSON.stringify(energyData.patterns[0], null, 2)}`;
+                document.getElementById('energyOutput').textContent = output;
+            }
+        }
+        updateEnergyOutput(0); // Initial update
+
+        // Zoom controls
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            camera.position.multiplyScalar(0.9);
+            controls.update();
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            camera.position.multiplyScalar(1.1);
+            controls.update();
+        });
+
+        // Export GLB
+        document.getElementById('exportButton').addEventListener('click', () => {
+            scene.traverse(object => {
+                if (object.isMesh) {
+                    const geometry = object.geometry;
+                    for (const key in geometry.attributes) {
+                        if (geometry.attributes[key].normalized === undefined) {
+                            geometry.attributes[key].normalized = false;
+                        }
+                    }
+                    if (geometry.morphAttributes) {
+                        for (const key in geometry.morphAttributes) {
+                            geometry.morphAttributes[key].forEach(attr => {
+                                if (attr.normalized === undefined) attr.normalized = false;
+                            });
+                        }
+                    }
+                }
+            });
+
+            const options = { binary: true, animations: scene.animations, trs: true };
+            exporter.parse(scene, gltf => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'MS3.glb';
+                link.click();
+            }, options);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            mixer.update(delta);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

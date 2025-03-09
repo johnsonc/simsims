@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Musculoskeletal Model MS2 with Animations</title>
+    <style>body { margin: 0; }</style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/exporters/GLTFExporter.js"></script>
+    <script>
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+
+        // Fixed light setup with proper target
+        const lightTarget = new THREE.Object3D();
+        lightTarget.position.set(0, 0, -1);
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(0, 10, 10);
+        light.add(lightTarget);
+        light.target = lightTarget;
+        scene.add(light);
+
+        // Added fill lights instead of ambient light
+        const fillLight1 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight1.position.set(-10, 5, -10);
+        const fillTarget1 = new THREE.Object3D();
+        fillTarget1.position.set(0, 0, -1);
+        fillLight1.add(fillTarget1);
+        fillLight1.target = fillTarget1;
+        scene.add(fillLight1);
+
+        const fillLight2 = new THREE.DirectionalLight(0x404040, 0.3);
+        fillLight2.position.set(10, -5, -10);
+        const fillTarget2 = new THREE.Object3D();
+        fillTarget2.position.set(0, 0, -1);
+        fillLight2.add(fillTarget2);
+        fillLight2.target = fillTarget2;
+        scene.add(fillLight2);
+
+        const exporter = new THREE.GLTFExporter();
+
+        // Enhanced Skeleton nodes
+        const fullSkeletonNodes = {
+            // Base skeleton
+            "root": { pos: [0, 0, 0] },
+            
+            // Spine and head
+            "spine_base": { pos: [0, 5, 0], parent: "root" },
+            "spine_l1": { pos: [0, 6, 0], parent: "spine_base" },
+            "spine_l2": { pos: [0, 7, 0], parent: "spine_l1" },
+            "spine_l3": { pos: [0, 8, 0], parent: "spine_l2" },
+            "spine_l4": { pos: [0, 9, 0], parent: "spine_l3" },
+            "spine_mid": { pos: [0, 10, 0], parent: "spine_l4" },
+            "spine_t12": { pos: [0, 11, 0], parent: "spine_mid" },
+            "spine_t11": { pos: [0, 11.5, 0], parent: "spine_t12" },
+            "spine_t10": { pos: [0, 12, 0], parent: "spine_t11" },
+            "spine_t9": { pos: [0, 12.5, 0], parent: "spine_t10" },
+            "spine_t8": { pos: [0, 13, 0], parent: "spine_t9" },
+            "spine_t7": { pos: [0, 13.5, 0], parent: "spine_t8" },
+            "spine_t6": { pos: [0, 14, 0], parent: "spine_t7" },
+            "spine_t5": { pos: [0, 14.5, 0], parent: "spine_t6" },
+            "spine_top": { pos: [0, 15, 0], parent: "spine_t5" },
+            "neck_c7": { pos: [0, 15.5, 0], parent: "spine_top" },
+            "neck_c6": { pos: [0, 16, 0], parent: "neck_c7" },
+            "neck_c5": { pos: [0, 16.5, 0], parent: "neck_c6" },
+            "neck_c4": { pos: [0, 17, 0], parent: "neck_c5" },
+            "neck_c3": { pos: [0, 17.5, 0], parent: "neck_c4" },
+            "neck_c2": { pos: [0, 18, 0], parent: "neck_c3" },
+            "neck_c1": { pos: [0, 18.5, 0], parent: "neck_c2" },
+            "skull_base": { pos: [0, 19, 0], parent: "neck_c1" },
+            "head": { pos: [0, 20, 0], parent: "skull_base" },
+            
+            // Facial bones
+            "jaw": { pos: [0, 19.2, 0.5], parent: "skull_base" },
+            "right_cheekbone": { pos: [1, 19.5, 0.5], parent: "skull_base" },
+            "left_cheekbone": { pos: [-1, 19.5, 0.5], parent: "skull_base" },
+            "nose_bridge": { pos: [0, 19.8, 1], parent: "skull_base" },
+            "nose_tip": { pos: [0, 19.5, 1.5], parent: "nose_bridge" },
+            
+            // Eye sockets
+            "right_eye_socket": { pos: [1, 20, 1], parent: "skull_base" },
+            "left_eye_socket": { pos: [-1, 20, 1], parent: "skull_base" },
+            
+            // Upper body - left side
+            "left_clavicle": { pos: [-1.5, 15, 0], parent: "spine_top" },
+            "left_shoulder": { pos: [-3, 14, 0], parent: "left_clavicle" },
+            "left_humerus_mid": { pos: [-4.5, 12, 0], parent: "left_shoulder" },
+            "left_elbow": { pos: [-6, 10, 0], parent: "left_humerus_mid" },
+            "left_radius_upper": { pos: [-6, 9, 0.2], parent: "left_elbow" },
+            "left_ulna_upper": { pos: [-6, 9, -0.2], parent: "left_elbow" },
+            "left_radius_mid": { pos: [-6, 8, 0.2], parent: "left_radius_upper" },
+            "left_ulna_mid": { pos: [-6, 8, -0.2], parent: "left_ulna_upper" },
+            "left_wrist": { pos: [-6, 6, 0], parent: "left_radius_mid" },
+            "left_thumb_base": { pos: [-6.5, 5.5, 0.3], parent: "left_wrist" },
+            "left_thumb_mid": { pos: [-6.8, 5.2, 0.4], parent: "left_thumb_base" },
+            "left_thumb_tip": { pos: [-7, 5, 0.5], parent: "left_thumb_mid" },
+            "left_index_base": { pos: [-6.2, 5, 0.2], parent: "left_wrist" },
+            "left_index_mid": { pos: [-6.2, 4, 0.2], parent: "left_index_base" },
+            "left_index_tip": { pos: [-6.2, 3.2, 0.2], parent: "left_index_mid" },
+            "left_middle_base": { pos: [-6, 5, 0.1], parent: "left_wrist" },
+            "left_middle_mid": { pos: [-6, 4, 0.1], parent: "left_middle_base" },
+            "left_middle_tip": { pos: [-6, 3.2, 0.1], parent: "left_middle_mid" },
+            "left_ring_base": { pos: [-5.8, 5, 0], parent: "left_wrist" },
+            "left_ring_mid": { pos: [-5.8, 4, 0], parent: "left_ring_base" },
+            "left_ring_tip": { pos: [-5.8, 3.2, 0], parent: "left_ring_mid" },
+            "left_pinky_base": { pos: [-5.5, 5, -0.1], parent: "left_wrist" },
+            "left_pinky_mid": { pos: [-5.5, 4.2, -0.1], parent: "left_pinky_base" },
+            "left_pinky_tip": { pos: [-5.5, 3.5, -0.1], parent: "left_pinky_mid" },
+            
+            // Upper body - right side
+            "right_clavicle": { pos: [1.5, 15, 0], parent: "spine_top" },
+            "right_shoulder": { pos: [3, 14, 0], parent: "right_clavicle" },
+            "right_humerus_mid": { pos: [4.5, 12, 0], parent: "right_shoulder" },
+            "right_elbow": { pos: [6, 10, 0], parent: "right_humerus_mid" },
+            "right_radius_upper": { pos: [6, 9, 0.2], parent: "right_elbow" },
+            "right_ulna_upper": { pos: [6, 9, -0.2], parent: "right_elbow" },
+            "right_radius_mid": { pos: [6, 8, 0.2], parent: "right_radius_upper" },
+            "right_ulna_mid": { pos: [6, 8, -0.2], parent: "right_ulna_upper" },
+            "right_wrist": { pos: [6, 6, 0], parent: "right_radius_mid" },
+            "right_thumb_base": { pos: [6.5, 5.5, 0.3], parent: "right_wrist" },
+            "right_thumb_mid": { pos: [6.8, 5.2, 0.4], parent: "right_thumb_base" },
+            "right_thumb_tip": { pos: [7, 5, 0.5], parent: "right_thumb_mid" },
+            "right_index_base": { pos: [6.2, 5, 0.2], parent: "right_wrist" },
+            "right_index_mid": { pos: [6.2, 4, 0.2], parent: "right_index_base" },
+            "right_index_tip": { pos: [6.2, 3.2, 0.2], parent: "right_index_mid" },
+            "right_middle_base": { pos: [6, 5, 0.1], parent: "right_wrist" },
+            "right_middle_mid": { pos: [6, 4, 0.1], parent: "right_middle_base" },
+            "right_middle_tip": { pos: [6, 3.2, 0.1], parent: "right_middle_mid" },
+            "right_ring_base": { pos: [5.8, 5, 0], parent: "right_wrist" },
+            "right_ring_mid": { pos: [5.8, 4, 0], parent: "right_ring_base" },
+            "right_ring_tip": { pos: [5.8, 3.2, 0], parent: "right_ring_mid" },
+            "right_pinky_base": { pos: [5.5, 5, -0.1], parent: "right_wrist" },
+            "right_pinky_mid": { pos: [5.5, 4.2, -0.1], parent: "right_pinky_base" },
+            "right_pinky_tip": { pos: [5.5, 3.5, -0.1], parent: "right_pinky_mid" },
+            
+            // Ribs
+            "left_rib1": { pos: [-2, 15, -0.5], parent: "spine_top" },
+            "left_rib3": { pos: [-2.5, 14, -0.5], parent: "spine_t8" },
+            "left_rib5": { pos: [-3, 13, -0.5], parent: "spine_t10" },
+            "left_rib7": { pos: [-3, 12, -0.5], parent: "spine_t12" },
+            "left_rib9": { pos: [-2.5, 11, -0.5], parent: "spine_mid" },
+            "left_rib11": { pos: [-2, 10, -0.5], parent: "spine_l4" },
+            "right_rib1": { pos: [2, 15, -0.5], parent: "spine_top" },
+            "right_rib3": { pos: [2.5, 14, -0.5], parent: "spine_t8" },
+            "right_rib5": { pos: [3, 13, -0.5], parent: "spine_t10" },
+            "right_rib7": { pos: [3, 12, -0.5], parent: "spine_t12" },
+            "right_rib9": { pos: [2.5, 11, -0.5], parent: "spine_mid" },
+            "right_rib11": { pos: [2, 10, -0.5], parent: "spine_l4" },
+            
+            // Pelvis
+            "pelvis": { pos: [0, 4.5, 0], parent: "spine_base" },
+            "sacrum": { pos: [0, 4, -0.5], parent: "pelvis" },
+            "coccyx": { pos: [0, 3.5, -0.7], parent: "sacrum" },
+            
+            // Lower body - left side
+            "left_hip": { pos: [-2, 4, 0], parent: "pelvis" },
+            "left_femur_upper": { pos: [-2, 2, 0], parent: "left_hip" },
+            "left_femur_mid": { pos: [-2, 0, 0], parent: "left_femur_upper" },
+            "left_knee": { pos: [-2, -2, 0], parent: "left_femur_mid" },
+            "left_tibia_upper": { pos: [-2, -4, 0], parent: "left_knee" },
+            "left_fibula_upper": { pos: [-2.2, -4, 0], parent: "left_knee" },
+            "left_tibia_mid": { pos: [-2, -6, 0], parent: "left_tibia_upper" },
+            "left_fibula_mid": { pos: [-2.2, -6, 0], parent: "left_fibula_upper" },
+            "left_ankle": { pos: [-2, -8, 0], parent: "left_tibia_mid" },
+            "left_heel": { pos: [-2, -8.2, -0.7], parent: "left_ankle" },
+            "left_foot_mid": { pos: [-2, -8.2, 0.5], parent: "left_ankle" },
+            "left_foot_front": { pos: [-2, -8.2, 1.2], parent: "left_foot_mid" },
+            "left_toe_big": { pos: [-1.7, -8.2, 1.8], parent: "left_foot_front" },
+            "left_toe_index": { pos: [-1.9, -8.2, 1.7], parent: "left_foot_front" },
+            "left_toe_middle": { pos: [-2, -8.2, 1.7], parent: "left_foot_front" },
+            "left_toe_ring": { pos: [-2.1, -8.2, 1.65], parent: "left_foot_front" },
+            "left_toe_little": { pos: [-2.3, -8.2, 1.6], parent: "left_foot_front" },
+            
+            // Lower body - right side
+            "right_hip": { pos: [2, 4, 0], parent: "pelvis" },
+            "right_femur_upper": { pos: [2, 2, 0], parent: "right_hip" },
+            "right_femur_mid": { pos: [2, 0, 0], parent: "right_femur_upper" },
+            "right_knee": { pos: [2, -2, 0], parent: "right_femur_mid" },
+            "right_tibia_upper": { pos: [2, -4, 0], parent: "right_knee" },
+            "right_fibula_upper": { pos: [2.2, -4, 0], parent: "right_knee" },
+            "right_tibia_mid": { pos: [2, -6, 0], parent: "right_tibia_upper" },
+            "right_fibula_mid": { pos: [2.2, -6, 0], parent: "right_fibula_upper" },
+            "right_ankle": { pos: [2, -8, 0], parent: "right_tibia_mid" },
+            "right_heel": { pos: [2, -8.2, -0.7], parent: "right_ankle" },
+            "right_foot_mid": { pos: [2, -8.2, 0.5], parent: "right_ankle" },
+            "right_foot_front": { pos: [2, -8.2, 1.2], parent: "right_foot_mid" },
+            "right_toe_big": { pos: [1.7, -8.2, 1.8], parent: "right_foot_front" },
+            "right_toe_index": { pos: [1.9, -8.2, 1.7], parent: "right_foot_front" },
+            "right_toe_middle": { pos: [2, -8.2, 1.7], parent: "right_foot_front" },
+            "right_toe_ring": { pos: [2.1, -8.2, 1.65], parent: "right_foot_front" },
+            "right_toe_little": { pos: [2.3, -8.2, 1.6], parent: "right_foot_front" },
+            
+            // Shoulder blades
+            "left_scapula": { pos: [-2, 14, -1], parent: "spine_top" },
+            "right_scapula": { pos: [2, 14, -1], parent: "spine_top" },
+            
+            // Vocal structures
+            "hyoid": { pos: [0, 17.7, 0.5], parent: "neck_c3" },
+            "thyroid_cartilage": { pos: [0, 17.4, 0.6], parent: "hyoid" },
+            "cricoid_cartilage": { pos: [0, 17.0, 0.6], parent: "thyroid_cartilage" },
+            "epiglottis": { pos: [0, 17.6, 0.7], parent: "hyoid" },
+            
+            // Tongue
+            "tongue_base": { pos: [0, 19.0, 0.4], parent: "jaw" },
+            "tongue_mid": { pos: [0, 19.0, 0.8], parent: "tongue_base" },
+            "tongue_tip": { pos: [0, 19.0, 1.2], parent: "tongue_mid" },
+            
+            // Eyes
+            "right_eyeball": { pos: [1, 20, 1.2], parent: "right_eye_socket" },
+            "left_eyeball": { pos: [-1, 20, 1.2], parent: "left_eye_socket" }
+        };
+        // Skeleton nodes
+        const skeletonNodes = {
+            "root": { pos: [0, 0, 0] },
+            "spine_base": { pos: [0, 5, 0], parent: "root" },
+            "spine_mid": { pos: [0, 10, 0], parent: "spine_base" },
+            "spine_top": { pos: [0, 15, 0], parent: "spine_mid" },
+            "head": { pos: [0, 20, 0], parent: "spine_top" },
+            "left_shoulder": { pos: [-3, 14, 0], parent: "spine_top" },
+            "left_elbow": { pos: [-6, 10, 0], parent: "left_shoulder" },
+            "left_wrist": { pos: [-6, 6, 0], parent: "left_elbow" },
+            "right_shoulder": { pos: [3, 14, 0], parent: "spine_top" },
+            "right_elbow": { pos: [6, 10, 0], parent: "right_shoulder" },
+            "right_wrist": { pos: [6, 6, 0], parent: "right_elbow" },
+            "left_hip": { pos: [-2, 4, 0], parent: "spine_base" },
+            "left_knee": { pos: [-2, -2, 0], parent: "left_hip" },
+            "left_ankle": { pos: [-2, -8, 0], parent: "left_knee" },
+            "right_hip": { pos: [2, 4, 0], parent: "spine_base" },
+            "right_knee": { pos: [2, -2, 0], parent: "right_hip" },
+            "right_ankle": { pos: [2, -8, 0], parent: "right_knee" }
+        };
+
+        // Create skeleton
+        const bones = [];
+        const boneMap = {};
+        Object.keys(skeletonNodes).forEach(nodeName => {
+            const bone = new THREE.Bone();
+            bone.position.set(...skeletonNodes[nodeName].pos);
+            bone.name = nodeName;
+            boneMap[nodeName] = bone;
+            bones.push(bone);
+        });
+
+        Object.keys(skeletonNodes).forEach(nodeName => {
+            const parentName = skeletonNodes[nodeName].parent;
+            if (parentName && boneMap[parentName]) {
+                boneMap[parentName].add(boneMap[nodeName]);
+            }
+        });
+
+        const skeletonRoot = new THREE.Object3D();
+        skeletonRoot.name = "SkeletonRoot";
+        skeletonRoot.add(boneMap["root"]);
+        scene.add(skeletonRoot);
+
+        const skeleton = new THREE.Skeleton(bones);
+
+        // Skinned mesh with proper skinning
+        const bodyGeometry = new THREE.BoxGeometry(6, 20, 2);
+        const skinIndices = [];
+        const skinWeights = [];
+        const position = bodyGeometry.attributes.position;
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < position.count; i++) {
+            vertex.fromBufferAttribute(position, i);
+            const y = vertex.y + 10; // Offset to match body position
+            if (y > 15) {
+                skinIndices.push(bones.indexOf(boneMap["spine_top"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else if (y < 5) {
+                skinIndices.push(bones.indexOf(boneMap["spine_base"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            } else {
+                skinIndices.push(bones.indexOf(boneMap["spine_mid"]), 0, 0, 0);
+                skinWeights.push(1, 0, 0, 0);
+            }
+        }
+
+        bodyGeometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        bodyGeometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.1, roughness: 0.8 });
+        const bodyMesh = new THREE.SkinnedMesh(bodyGeometry, bodyMaterial);
+        bodyMesh.name = "Body";
+        bodyMesh.position.set(0, 10, 0);
+        bodyMesh.bind(skeleton);
+        bodyMesh.add(bones[0]); // Add root bone to mesh
+        scene.add(bodyMesh);
+
+        // Helper function to create a cylinder
+        function createCylinder(startPoint, endPoint, radius, material) {
+            const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+            const height = direction.length();
+            const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
+            geometry.translate(0, height / 2, 0);
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(startPoint);
+            mesh.lookAt(endPoint);
+            mesh.rotateX(Math.PI / 2);
+            return mesh;
+        }
+
+        // Visible bone connections
+        const boneMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.6, transparent: true, opacity: 0.6 });
+        Object.keys(skeletonNodes).forEach(nodeName => {
+            const parentName = skeletonNodes[nodeName].parent;
+            if (parentName) {
+                const startPos = new THREE.Vector3(...skeletonNodes[parentName].pos);
+                const endPos = new THREE.Vector3(...skeletonNodes[nodeName].pos);
+                const boneCylinder = createCylinder(startPos, endPos, 0.3, boneMaterial);
+                boneCylinder.name = `${parentName}_to_${nodeName}`;
+                scene.add(boneCylinder);
+            }
+        });
+
+        // Muscles with morph targets
+        const muscles = [
+            { name: "left_bicep", origin: "left_shoulder", insertion: "left_elbow", radius: 0.5 },
+            { name: "right_bicep", origin: "right_shoulder", insertion: "right_elbow", radius: 0.5 },
+            { name: "left_quad", origin: "left_hip", insertion: "left_knee", radius: 0.7 },
+            { name: "right_quad", origin: "right_hip", insertion: "right_knee", radius: 0.7 }
+        ];
+
+        const muscleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, metalness: 0.1, roughness: 0.8 });
+        muscles.forEach(muscle => {
+            const startPos = new THREE.Vector3(...skeletonNodes[muscle.origin].pos);
+            const endPos = new THREE.Vector3(...skeletonNodes[muscle.insertion].pos);
+            const direction = new THREE.Vector3().subVectors(endPos, startPos);
+            const height = direction.length();
+
+            const relaxedGeom = new THREE.CylinderGeometry(muscle.radius, muscle.radius, height, 8);
+            relaxedGeom.translate(0, height / 2, 0);
+
+            const contractedGeom = new THREE.CylinderGeometry(muscle.radius * 1.3, muscle.radius * 1.3, height * 0.8, 8);
+            contractedGeom.translate(0, height * 0.4, 0);
+
+            const geometry = relaxedGeom.clone();
+            geometry.morphAttributes.position = [];
+            geometry.morphAttributes.position[0] = new THREE.Float32BufferAttribute(
+                contractedGeom.attributes.position.array,
+                3
+            );
+
+            const mesh = new THREE.Mesh(geometry, muscleMaterial.clone());
+            mesh.name = muscle.name;
+            mesh.position.copy(startPos);
+            mesh.lookAt(endPos);
+            mesh.rotateX(Math.PI / 2);
+            mesh.morphTargetInfluences = [0];
+            scene.add(mesh);
+        });
+
+        // Animation setup
+        const mixer = new THREE.AnimationMixer(scene);
+        const clock = new THREE.Clock();
+
+        // IDLE Animation - Fixed track names
+        const idleTracks = [];
+        const idleTimes = [0, 1, 2, 3];
+        ['spine_mid', 'spine_top'].forEach(boneName => {
+            const bone = boneMap[boneName];
+            const xAxis = new THREE.Vector3(1, 0, 0);
+            const values = [
+                new THREE.Quaternion().setFromAxisAngle(xAxis, 0),
+                new THREE.Quaternion().setFromAxisAngle(xAxis, 0.05),
+                new THREE.Quaternion().setFromAxisAngle(xAxis, 0),
+                new THREE.Quaternion().setFromAxisAngle(xAxis, -0.02)
+            ].flatMap(q => [q.x, q.y, q.z, q.w]);
+            
+            // Using bone name instead of UUID for better compatibility
+            const track = new THREE.QuaternionKeyframeTrack(
+                `${bone.name}.quaternion`,
+                idleTimes,
+                values
+            );
+            idleTracks.push(track);
+        });
+        const idleClip = new THREE.AnimationClip('idle', 3, idleTracks);
+
+        // WALK Animation - Fixed track names
+        const walkTracks = [];
+        const walkTimes = [0, 0.5, 1, 1.5, 2];
+        const walkParts = [
+            { bone: 'left_hip', axis: new THREE.Vector3(1, 0, 0), angles: [0, 0.3, 0, -0.3, 0] },
+            { bone: 'right_hip', axis: new THREE.Vector3(1, 0, 0), angles: [0, -0.3, 0, 0.3, 0] },
+            { bone: 'left_knee', axis: new THREE.Vector3(1, 0, 0), angles: [0, -0.2, 0, 0, 0] },
+            { bone: 'right_knee', axis: new THREE.Vector3(1, 0, 0), angles: [0, 0, 0, -0.2, 0] },
+            { bone: 'left_shoulder', axis: new THREE.Vector3(1, 0, 0), angles: [0, -0.2, 0, 0.2, 0] },
+            { bone: 'right_shoulder', axis: new THREE.Vector3(1, 0, 0), angles: [0, 0.2, 0, -0.2, 0] }
+        ];
+
+        walkParts.forEach(part => {
+            const bone = boneMap[part.bone];
+            const values = part.angles.map(angle => {
+                const q = new THREE.Quaternion().setFromAxisAngle(part.axis, angle);
+                return [q.x, q.y, q.z, q.w];
+            }).flat();
+            
+            // Using bone name instead of UUID
+            const track = new THREE.QuaternionKeyframeTrack(
+                `${bone.name}.quaternion`,
+                walkTimes,
+                values
+            );
+            walkTracks.push(track);
+        });
+
+        muscles.forEach(muscle => {
+            if (muscle.name.includes('quad')) {
+                const morphValues = (muscle.name === 'left_quad') ? [0, 0.8, 0, 0.2, 0] : [0, 0.2, 0, 0.8, 0];
+                const track = new THREE.NumberKeyframeTrack(
+                    `${muscle.name}.morphTargetInfluences[0]`,
+                    walkTimes,
+                    morphValues
+                );
+                walkTracks.push(track);
+            }
+        });
+        const walkClip = new THREE.AnimationClip('walk', 2, walkTracks);
+
+        scene.animations = [idleClip, walkClip];
+
+        // Play the idle animation by default
+        const idleAction = mixer.clipAction(idleClip);
+        idleAction.play();
+
+        // Animate for initialization
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            mixer.update(delta);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Export function - fixed for better compatibility
+        function exportGLB() {
+            // Process scene for export
+            scene.traverse(object => {
+                if (object.isMesh) {
+                    const geometry = object.geometry;
+                    for (const key in geometry.attributes) {
+                        if (geometry.attributes[key].normalized === undefined) {
+                            geometry.attributes[key].normalized = false;
+                        }
+                    }
+                    if (geometry.morphAttributes) {
+                        for (const key in geometry.morphAttributes) {
+                            geometry.morphAttributes[key].forEach(attr => {
+                                if (attr.normalized === undefined) attr.normalized = false;
+                            });
+                        }
+                    }
+                }
+            });
+
+            // Use preserveNamedAnimations to maintain bone path names
+            const options = { 
+                binary: true, 
+                animations: scene.animations, 
+                trs: true,
+                onlyVisible: false,  // Export invisible objects too
+                truncateDrawRange: false, // Export full geometries
+                embedImages: true, // Embed any textures
+                forceIndices: true // Ensure indices are included
+            };
+            
+            exporter.parse(scene, gltf => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'MS2.glb';
+                link.click();
+                console.log("Export complete!");
+            }, options);
+        }
+
+        // Add UI controls for exporting and testing animations
+        const controlsDiv = document.createElement('div');
+        controlsDiv.style.position = 'absolute';
+        controlsDiv.style.top = '10px';
+        controlsDiv.style.left = '10px';
+        controlsDiv.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        controlsDiv.style.padding = '10px';
+        controlsDiv.style.borderRadius = '5px';
+        document.body.appendChild(controlsDiv);
+
+        const exportButton = document.createElement('button');
+        exportButton.textContent = 'Export GLB';
+        exportButton.addEventListener('click', exportGLB);
+        controlsDiv.appendChild(exportButton);
+
+        const animSelect = document.createElement('select');
+        animSelect.style.marginLeft = '10px';
+        const idleOption = document.createElement('option');
+        idleOption.value = 'idle';
+        idleOption.textContent = 'Idle Animation';
+        const walkOption = document.createElement('option');
+        walkOption.value = 'walk';
+        walkOption.textContent = 'Walk Animation';
+        animSelect.appendChild(idleOption);
+        animSelect.appendChild(walkOption);
+        animSelect.addEventListener('change', (e) => {
+            mixer.stopAllAction();
+            if (e.target.value === 'idle') {
+                mixer.clipAction(idleClip).play();
+            } else {
+                mixer.clipAction(walkClip).play();
+            }
+        });
+        controlsDiv.appendChild(animSelect);
+    </script>
+</body>
+</html>

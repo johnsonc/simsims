@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MS3 Dashboard - Muscle Simulation 3D</title>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #container { 
+            display: flex;
+            width: 100vw; 
+            height: 100vh; 
+        }
+        #canvas-container { 
+            flex: 7;
+            position: relative;
+        }
+        #controls-panel { 
+            flex: 3;
+            background: #f0f0f0; 
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 35%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        .panel {
+            background: #fff;
+            border-radius: 5px;
+            padding: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+        }
+        .panel h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
+        .btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #3367d6;
+        }
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        #computation-pane {
+            font-family: monospace;
+            background: #333;
+            color: #adff2f;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        #computation-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .stat-item {
+            background: #e9e9e9;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .stat-label {
+            font-weight: bold;
+            font-size: 0.8em;
+            color: #555;
+        }
+        .stat-value {
+            font-size: 1.1em;
+            color: #333;
+        }
+        #model-info {
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        #camera-controls {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            display: flex;
+            gap: 5px;
+        }
+        .camera-btn {
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container">
+            <!-- WebGL canvas will be appended here -->
+            <div id="loading-indicator">Loading model...</div>
+            <div id="camera-controls">
+                <button class="camera-btn" onclick="resetCamera()">R</button>
+                <button class="camera-btn" onclick="zoomIn()">+</button>
+                <button class="camera-btn" onclick="zoomOut()">-</button>
+            </div>
+        </div>
+        <div id="controls-panel">
+            <div class="panel">
+                <h3>Animation Controls</h3>
+                <div class="btn-group">
+                    <button class="btn" onclick="switchAnimation('idle')">Idle</button>
+                    <button class="btn" onclick="switchAnimation('walk')">Walk</button>
+                    <button class="btn" onclick="switchAnimation('idle', 'impaired')">Impaired Idle</button>
+                    <button class="btn" onclick="switchAnimation('walk', 'trained')">Trained Walk</button>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h3>Export Options</h3>
+                <div class="btn-group">
+                    <button class="btn" onclick="downloadData()">Download JSON Data</button>
+                    <button class="btn" onclick="exportGLB()">Export GLB Model</button>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h3>Computation Analysis</h3>
+                <div id="computation-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">TOTAL ENERGY</div>
+                        <div class="stat-value" id="total-energy">0.00</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">ANIMATION</div>
+                        <div class="stat-value" id="current-animation">None</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">CONTEXT</div>
+                        <div class="stat-value" id="current-context">healthy</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">FRAME</div>
+                        <div class="stat-value" id="current-frame">0</div>
+                    </div>
+                </div>
+                <div id="computation-pane"></div>
+            </div>
+            
+            <div class="panel">
+                <h3>Model Information</h3>
+                <div id="model-info">
+                    <p>Loaded bones: <span id="bone-count">0</span></p>
+                    <p>Loaded muscles: <span id="muscle-count">0</span></p>
+                    <p>Animation clips: <span id="clip-count">0</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+        import { createAnimations } from './anims_d1.js';
+        import { fullSkeletonNodes } from './bones.js';
+        import { muscles } from './500muscles.js';
+
+        // Expose functions to global scope for button clicks
+        window.switchAnimation = switchAnimation;
+        window.downloadData = downloadData;
+        window.exportGLB = exportGLB;
+        window.resetCamera = resetCamera;
+        window.zoomIn = zoomIn;
+        window.zoomOut = zoomOut;
+
+        // Scene Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1e293b);
+        
+        const camera = new THREE.PerspectiveCamera(75, 0.7 * window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(0.7 * window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        //renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.shadowMap.enabled = true;
+        
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 1);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+        scene.add(directionalLight);
+        
+        // Ground plane for shadow
+        const groundGeometry = new THREE.PlaneGeometry(20, 20);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xdedede, 
+            roughness: 0.8, 
+            metalness: 0.2,
+            transparent: true,
+            opacity: 0.7
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x888888);
+        scene.add(gridHelper);
+
+        // Orbit Controls for Zoom and Pan
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 20;
+        controls.minDistance = 2;
+
+        // GLTF Loader
+        const loader = new GLTFLoader();
+        let mixer, model, boneMap = {}, currentAction = null;
+        let animations = [];
+        let totalBones = 0;
+        let currentFrame = 0;
+        let currentContext = 'healthy';
+        
+        // Show loading indicator
+        document.getElementById('loading-indicator').style.display = 'block';
+
+
+        // Replace the createModel function with this:
+        function createModel() {
+            document.getElementById('loading-indicator').style.display = 'block';
+            
+            // Create a base skeleton from the bones data
+            const skeleton = new THREE.Object3D();
+            skeleton.name = "MuscleSkeleton";
+            
+            // Create a mapping to store bones as we create them
+            const createdBones = {};
+            
+            // First pass: create all bones
+            for (const nodeName in fullSkeletonNodes) {
+                const nodeData = fullSkeletonNodes[nodeName];
+                const bone = new THREE.Bone();
+                bone.name = nodeName;
+                
+                // Check if position is an array or an object
+                if (Array.isArray(nodeData.pos)) {
+                    bone.position.set(nodeData.pos[0], nodeData.pos[1], nodeData.pos[2]);
+                } else if (nodeData.pos) {
+                    bone.position.set(nodeData.pos.x || 0, nodeData.pos.y || 0, nodeData.pos.z || 0);
+                }
+                
+                createdBones[nodeName] = bone;
+                boneMap[nodeName.toLowerCase()] = bone;
+                totalBones++;
+            }
+            
+            // Second pass: establish parent-child relationships
+            for (const nodeName in fullSkeletonNodes) {
+                const nodeData = fullSkeletonNodes[nodeName];
+                const bone = createdBones[nodeName];
+                
+                if (nodeData.parent && createdBones[nodeData.parent]) {
+                    createdBones[nodeData.parent].add(bone);
+                } else {
+                    // If no parent or parent not found, add to root skeleton
+                    skeleton.add(bone);
+                }
+            }
+            
+            scene.add(skeleton);
+            model = skeleton;
+            
+            // Create muscle visualizations
+            const muscleMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xff0000, 
+                opacity: 0.6, 
+                transparent: true 
+            });
+            
+            muscles.forEach(muscle => {
+                const startBoneName = muscle.origin;
+                const endBoneName = muscle.insertion;
+                const startBone = boneMap[startBoneName.toLowerCase()];
+                const endBone = boneMap[endBoneName.toLowerCase()];
+                
+                if (startBone && endBone) {
+                    // Get world positions of bones
+                    const startPos = new THREE.Vector3();
+                    const endPos = new THREE.Vector3();
+                    
+                    // Need to update world matrix for correct positions
+                    startBone.updateWorldMatrix(true, false);
+                    endBone.updateWorldMatrix(true, false);
+                    
+                    startBone.getWorldPosition(startPos);
+                    endBone.getWorldPosition(endPos);
+                    
+                    // Create a cylinder representing the muscle
+                    const direction = new THREE.Vector3().subVectors(endPos, startPos);
+                    const length = direction.length();
+                    const muscleGeometry = new THREE.CylinderGeometry(
+                        muscle.radius || 0.02, 
+                        muscle.radius || 0.02, 
+                        length, 
+                        8
+                    );
+                    
+                    const muscleMesh = new THREE.Mesh(muscleGeometry, muscleMaterial);
+                    muscleMesh.name = `muscle-${muscle.name}`;
+                    
+                    // Position and rotate the muscle to connect the bones
+                    const midpoint = new THREE.Vector3().lerpVectors(startPos, endPos, 0.5);
+                    muscleMesh.position.copy(midpoint);
+                    
+                    // Orient the cylinder to point from start to end
+                    muscleMesh.lookAt(endPos);
+                    muscleMesh.rotateX(Math.PI / 2);
+                    
+                    scene.add(muscleMesh);
+                }
+            });
+            
+            document.getElementById('bone-count').textContent = totalBones;
+            document.getElementById('muscle-count').textContent = muscles.length;
+            
+            // Generate animations using the specified bones and muscles
+            animations = createAnimations(boneMap, muscles);
+            document.getElementById('clip-count').textContent = animations.length;
+            
+            // Initialize animation mixer
+            mixer = new THREE.AnimationMixer(model);
+            
+            // Add animation clips to the mixer
+            animations.forEach(clip => {
+                const action = mixer.clipAction(clip);
+                if (action) action.setLoop(THREE.LoopRepeat);
+            });
+            
+            // Position camera and model
+            model.position.y = 0;
+            camera.position.set(0, 2, 5);
+            controls.target.set(0, 1, 0);
+            controls.update();
+            
+            // Start with idle animation
+            switchAnimation('idle');
+            
+            // Hide loading indicator
+            document.getElementById('loading-indicator').style.display = 'none';
+            
+            console.log('Model and animations generated successfully');
+            updateModelInfo();
+            
+            // Initialize a simple action pattern database if it doesn't exist
+            if (!window.actionPatternDB) {
+                window.actionPatternDB = {
+                    idle: {
+                        totalEnergy: 45.2,
+                        patterns: Array(60).fill(0).map((_, i) => ({
+                            phase: i / 60,
+                            muscleActivation: muscles.slice(0, 10).map(m => ({
+                                id: m.name,
+                                activation: Math.sin(i / 60 * Math.PI * 2) * 0.5 + 0.5
+                            }))
+                        })),
+                        grammar: {
+                            syntax: "Idle position with minimal movement",
+                            rules: ["Maintain balance", "Reduce energy expenditure"]
+                        }
+                    },
+                    walk: {
+                        totalEnergy: 120.7,
+                        patterns: Array(60).fill(0).map((_, i) => ({
+                            phase: i / 60,
+                            muscleActivation: muscles.slice(0, 10).map(m => ({
+                                id: m.name,
+                                activation: Math.sin((i / 60 * Math.PI * 2) + Math.random()) * 0.7 + 0.3
+                            }))
+                        })),
+                        grammar: {
+                            syntax: "Bipedal locomotion pattern",
+                            rules: ["Forward momentum", "Weight transfer", "Balance maintenance"]
+                        }
+                    }
+                };
+            }
+        }
+    createModel();
+
+
+        // Animation Loop
+        let lastTime = 0;
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            const delta = Math.min(0.1, (currentTime - lastTime) / 1000); // Cap delta to prevent spikes
+            lastTime = currentTime;
+
+            if (mixer) {
+                mixer.update(delta);
+                // Update frame counter every 5 frames to avoid excessive DOM updates
+                if (currentTime % 5 < 16) {
+                    currentFrame = (currentFrame + 1) % 60;
+                    document.getElementById('current-frame').textContent = currentFrame;
+                    updateComputationPane();
+                }
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Switch Animation Function
+        function switchAnimation(animName, context = 'healthy') {
+            if (!mixer) return;
+            
+            // Find the animation clip by name and context
+            const clipIndex = animations.findIndex(clip => 
+                clip.name === animName && 
+                (context ? clip.name.includes(context) : !clip.name.includes('impaired') && !clip.name.includes('trained'))
+            );
+            
+            if (clipIndex !== -1) {
+                const action = mixer.clipAction(animations[clipIndex]);
+                
+                if (action) {
+                    if (currentAction) {
+                        currentAction.fadeOut(0.5);
+                    }
+                    action.reset().fadeIn(0.5).play();
+                    currentAction = action;
+                    currentContext = context;
+                    
+                    // Update UI
+                    document.getElementById('current-animation').textContent = animName;
+                    document.getElementById('current-context').textContent = context;
+                    console.log(`Switched to ${animName} (${context})`);
+                    
+                    updateComputationPane();
+                }
+            } else {
+                console.warn(`Animation ${animName} with context ${context} not found`);
+            }
+        }
+
+        // Update Computation Pane
+        function updateComputationPane() {
+            if (!window.actionPatternDB) return;
+            
+            const animName = currentAction?.getClip().name.split('_')[0] || 'idle';
+            const data = window.actionPatternDB[animName];
+            
+            if (!data) return;
+            
+            document.getElementById('total-energy').textContent = data.totalEnergy.toFixed(2);
+            
+            // Get current frame pattern (show a sample if full data not available)
+            const pattern = data.patterns[currentFrame] || data.patterns[0] || {};
+            
+            const pane = document.getElementById('computation-pane');
+            pane.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <b>Frame ${currentFrame} Pattern:</b>
+                    ${JSON.stringify(pattern, null, 2)}
+                </div>
+                <div>
+                    <b>Grammar Sample:</b>
+                    ${JSON.stringify(data.grammar || {}, null, 2)}
+                </div>
+            `;
+        }
+
+        // Update model information
+        function updateModelInfo() {
+            if (!model) return;
+            
+            let meshCount = 0;
+            let vertexCount = 0;
+            
+            model.traverse(child => {
+                if (child.isMesh) {
+                    meshCount++;
+                    if (child.geometry) {
+                        vertexCount += child.geometry.attributes.position.count;
+                    }
+                }
+            });
+            
+            const modelInfo = document.getElementById('model-info');
+            modelInfo.innerHTML += `
+                <p>Meshes: ${meshCount}</p>
+                <p>Vertices: ${vertexCount}</p>
+            `;
+        }
+
+        // Download Data Function
+        function downloadData() {
+            if (!window.actionPatternDB) {
+                console.error('No action pattern data available');
+                return;
+            }
+            
+            const dataStr = 'data:text/json;charset=utf-8,' + 
+                encodeURIComponent(JSON.stringify(window.actionPatternDB, null, 2));
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.setAttribute('href', dataStr);
+            downloadLink.setAttribute('download', 'ms3_action_patterns.json');
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+
+                // Export GLB Function
+        function exportGLB() {
+            if (!model) {
+                console.error('No model generated');
+                alert('Please generate the model first before exporting');
+                return;
+            }
+            
+            const exporter = new GLTFExporter();
+            
+            // Create a scene specifically for export
+            const exportScene = new THREE.Scene();
+            
+            // Clone the model for export to avoid modifying the original
+            const exportModel = model.clone();
+            exportScene.add(exportModel);
+            
+            // Add muscle visualizations to the export
+            scene.children.forEach(child => {
+                if (child.name && child.name.startsWith('muscle-')) {
+                    exportScene.add(child.clone());
+                }
+            });
+            
+            // Export options
+            const options = { 
+                binary: true, 
+                animations: animations,
+                trs: true,
+                onlyVisible: true,
+                truncateDrawRange: false,
+                embedImages: true,
+                forceIndices: true
+            };
+            
+            // Export the model
+            exporter.parse(exportScene, gltf => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'MS3_Model.glb';
+                link.click();
+                console.log("Export complete!");
+                
+                // Clean up
+                URL.revokeObjectURL(link.href);
+            }, error => {
+                console.error('Error exporting GLB:', error);
+                alert('Error exporting model. See console for details.');
+            }, options);
+        }        
+        // Camera control functions
+        function resetCamera() {
+            camera.position.set(0, 2, 5);
+            controls.target.set(0, 1, 0);
+            controls.update();
+        }
+        
+        function zoomIn() {
+            camera.position.lerp(controls.target, 0.2);
+            controls.update();
+        }
+        
+        function zoomOut() {
+            camera.position.lerp(controls.target, -0.2);
+            controls.update();
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            const width = 0.7 * window.innerWidth;
+            const height = window.innerHeight;
+            
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+    </script>
+</body>
+</html>

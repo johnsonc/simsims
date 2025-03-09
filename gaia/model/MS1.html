@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Musculoskeletal Model MS1</title>
+    <style>body { margin: 0; }</style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/exporters/GLTFExporter.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const exporter = new THREE.GLTFExporter();
+
+        // Simplified skeleton: nodes (joints) and their positions
+        const skeletonNodes = {
+            "spine_base": { pos: [0, 0, 0] },
+            "spine_mid": { pos: [0, 10, 0] },
+            "spine_top": { pos: [0, 20, 0] },
+            "head": { pos: [0, 25, 0] },
+            "left_shoulder": { pos: [-5, 18, 0] },
+            "left_elbow": { pos: [-10, 10, 0] },
+            "left_wrist": { pos: [-10, 5, 0] },
+            "right_shoulder": { pos: [5, 18, 0] },
+            "right_elbow": { pos: [10, 10, 0] },
+            "right_wrist": { pos: [10, 5, 0] },
+            "left_hip": { pos: [-3, 5, 0] },
+            "left_knee": { pos: [-3, -5, 0] },
+            "left_ankle": { pos: [-3, -15, 0] },
+            "right_hip": { pos: [3, 5, 0] },
+            "right_knee": { pos: [3, -5, 0] },
+            "right_ankle": { pos: [3, -15, 0] }
+        };
+
+        // Skeleton edges (bones connecting nodes)
+        const skeletonEdges = [
+            ["spine_base", "spine_mid"],
+            ["spine_mid", "spine_top"],
+            ["spine_top", "head"],
+            ["spine_top", "left_shoulder"],
+            ["left_shoulder", "left_elbow"],
+            ["left_elbow", "left_wrist"],
+            ["spine_top", "right_shoulder"],
+            ["right_shoulder", "right_elbow"],
+            ["right_elbow", "right_wrist"],
+            ["spine_base", "left_hip"],
+            ["left_hip", "left_knee"],
+            ["left_knee", "left_ankle"],
+            ["spine_base", "right_hip"],
+            ["right_hip", "right_knee"],
+            ["right_knee", "right_ankle"]
+        ];
+
+        // Muscle edges (cylinders connecting nodes)
+        const muscles = [];
+        const nodeKeys = Object.keys(skeletonNodes);
+        for (let i = 0; i < 500; i++) { // ~500 muscles
+            const origin = nodeKeys[Math.floor(Math.random() * nodeKeys.length)];
+            let insertion = nodeKeys[Math.floor(Math.random() * nodeKeys.length)];
+            while (insertion === origin) { // Ensure distinct points
+                insertion = nodeKeys[Math.floor(Math.random() * nodeKeys.length)];
+            }
+            muscles.push({
+                name: `muscle_${i}`,
+                geom_relaxed: { radius: 0.5 + Math.random() * 0.5, height: 5 + Math.random() * 5 },
+                geom_contracted: { radius: 0.6 + Math.random() * 0.6, height: 4 + Math.random() * 4 },
+                points_of_contact: { origin, insertion }
+            });
+        }
+
+        // Function to create a muscle cylinder
+        function createMuscle(muscle) {
+            const group = new THREE.Group();
+            group.name = muscle.name;
+
+            // Relaxed geometry
+            const relaxedGeom = new THREE.CylinderGeometry(
+                muscle.geom_relaxed.radius,
+                muscle.geom_relaxed.radius,
+                muscle.geom_relaxed.height,
+                8
+            );
+            // Contracted geometry as morph target
+            const contractedGeom = new THREE.CylinderGeometry(
+                muscle.geom_contracted.radius,
+                muscle.geom_contracted.radius,
+                muscle.geom_contracted.height,
+                8
+            );
+
+            // Set up morph attributes
+            const geometry = relaxedGeom.clone();
+            geometry.morphAttributes.position = [];
+            geometry.morphAttributes.position[0] = new THREE.Float32BufferAttribute(
+                contractedGeom.attributes.position.array,
+                3
+            );
+
+            const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.morphTargetInfluences = [0]; // 0 = relaxed, 1 = contracted
+            mesh.updateMorphTargets();
+
+            // Position and orient between origin and insertion
+            const originPos = skeletonNodes[muscle.points_of_contact.origin].pos;
+            const insertionPos = skeletonNodes[muscle.points_of_contact.insertion].pos;
+            const midX = (originPos[0] + insertionPos[0]) / 2;
+            const midY = (originPos[1] + insertionPos[1]) / 2;
+            const midZ = (originPos[2] + insertionPos[2]) / 2;
+            mesh.position.set(midX, midY, midZ);
+
+            const direction = new THREE.Vector3().subVectors(
+                new THREE.Vector3(...insertionPos),
+                new THREE.Vector3(...originPos)
+            ).normalize();
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+
+            group.add(mesh);
+            group.userData = { points_of_contact: muscle.points_of_contact };
+            scene.add(group);
+        }
+
+        // Add skeleton nodes (joints) as small spheres
+        Object.keys(skeletonNodes).forEach(nodeName => {
+            const geometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const node = new THREE.Mesh(geometry, material);
+            node.position.set(...skeletonNodes[nodeName].pos);
+            node.name = nodeName;
+            scene.add(node);
+        });
+
+        // Add skeleton edges (bones) as thin cylinders
+        skeletonEdges.forEach(([origin, insertion], i) => {
+            const originPos = skeletonNodes[origin].pos;
+            const insertionPos = skeletonNodes[insertion].pos;
+            const length = Math.sqrt(
+                (insertionPos[0] - originPos[0]) ** 2 +
+                (insertionPos[1] - originPos[1]) ** 2 +
+                (insertionPos[2] - originPos[2]) ** 2
+            );
+
+            const geometry = new THREE.CylinderGeometry(0.2, 0.2, length, 8);
+            const material = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const bone = new THREE.Mesh(geometry, material);
+
+            const midX = (originPos[0] + insertionPos[0]) / 2;
+            const midY = (originPos[1] + insertionPos[1]) / 2;
+            const midZ = (originPos[2] + insertionPos[2]) / 2;
+            bone.position.set(midX, midY, midZ);
+
+            const direction = new THREE.Vector3().subVectors(
+                new THREE.Vector3(...insertionPos),
+                new THREE.Vector3(...originPos)
+            ).normalize();
+            bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+
+            bone.name = `bone_${i}`;
+            scene.add(bone);
+        });
+
+        // Generate all muscles
+        muscles.forEach(createMuscle);
+
+        // Export to MS1.glb
+        function exportGLB() {
+            exporter.parse(scene, function (gltf) {
+                const blob = new Blob([gltf], { type: "application/octet-stream" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "MS1.glb";
+                link.click();
+            }, { binary: true });
+        }
+
+        // Trigger export after 1 second
+        setTimeout(exportGLB, 1000);
+    </script>
+</body>
+</html>
